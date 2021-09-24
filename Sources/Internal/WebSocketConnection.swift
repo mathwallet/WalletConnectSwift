@@ -8,6 +8,7 @@ import Starscream
 class WebSocketConnection {
     let url: WCURL
     private let socket: WebSocket
+    private var isConnected: Bool = false
     private let onConnect: (() -> Void)?
     private let onDisconnect: ((Error?) -> Void)?
     private let onTextReceive: ((String) -> Void)?
@@ -23,7 +24,7 @@ class WebSocketConnection {
     private let serialCallbackQueue: DispatchQueue
 
     var isOpen: Bool {
-        return socket.isConnected
+        return self.isConnected
     }
 
     init(url: WCURL,
@@ -35,7 +36,7 @@ class WebSocketConnection {
         self.onDisconnect = onDisconnect
         self.onTextReceive = onTextReceive
         serialCallbackQueue = DispatchQueue(label: "org.walletconnect.swift.connection-\(url.bridgeURL)-\(url.topic)")
-        socket = WebSocket(url: url.bridgeURL)
+        socket = WebSocket(request: URLRequest(url: url.bridgeURL))
         socket.delegate = self
         socket.callbackQueue = serialCallbackQueue
     }
@@ -49,7 +50,7 @@ class WebSocketConnection {
     }
 
     func send(_ text: String) {
-        guard socket.isConnected else { return }
+        guard self.isConnected else { return }
         socket.write(string: text)
         log(text)
     }
@@ -66,24 +67,22 @@ class WebSocketConnection {
 }
 
 extension WebSocketConnection: WebSocketDelegate {
-    func websocketDidConnect(socket: WebSocketClient) {
-        pingTimer = Timer.scheduledTimer(withTimeInterval: pingInterval, repeats: true) { [weak self] _ in
-            LogService.shared.log("WC: ==> ping")
-            self?.socket.write(ping: Data())
+    func didReceive(event: WebSocketEvent, client: WebSocket) {
+        switch event {
+        case .connected(_):
+            self.isConnected = true
+            pingTimer = Timer.scheduledTimer(withTimeInterval: pingInterval, repeats: true) { [weak self] _ in
+                LogService.shared.log("WC: ==> ping")
+                self?.socket.write(ping: Data())
+            }
+        case  .disconnected(_, _):
+            self.isConnected = false
+            pingTimer?.invalidate()
+            onDisconnect?(nil)
+        case  .text(let text):
+            onTextReceive?(text)
+        default:
+            break
         }
-        onConnect?()
-    }
-
-    func websocketDidDisconnect(socket: WebSocketClient, error: Error?) {
-        pingTimer?.invalidate()
-        onDisconnect?(error)
-    }
-
-    func websocketDidReceiveMessage(socket: WebSocketClient, text: String) {
-        onTextReceive?(text)
-    }
-
-    func websocketDidReceiveData(socket: WebSocketClient, data: Data) {
-        // no-op
     }
 }
