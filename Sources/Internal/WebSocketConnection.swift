@@ -75,6 +75,7 @@ extension WebSocketConnection: WebSocketDelegate {
                 LogService.shared.log("WC: ==> ping")
                 self?.socket.write(ping: Data())
             }
+            onConnect?()
         case  .disconnected(_, _):
             self.isConnected = false
             pingTimer?.invalidate()
