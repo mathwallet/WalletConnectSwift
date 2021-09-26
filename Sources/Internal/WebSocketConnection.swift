@@ -76,12 +76,16 @@ extension WebSocketConnection: WebSocketDelegate {
                 self?.socket.write(ping: Data())
             }
             onConnect?()
-        case  .disconnected(_, _):
+        case .disconnected(_, _):
             self.isConnected = false
             pingTimer?.invalidate()
             onDisconnect?(nil)
-        case  .text(let text):
+        case .text(let text):
             onTextReceive?(text)
+        case .cancelled:
+            self.isConnected = false
+        case .error(_):
+            self.isConnected = false
         default:
             break
         }
